@@ -4,8 +4,8 @@
 #
 # Cara pake:
 #   bash hermes-backup.sh                          # pake config file (~/.hermes/scripts/backup-target.conf)
-#   bash hermes-backup.sh 10.10.10.116             # pake IP langsung (1x)
-#   BACKUP_IP=10.10.10.116 bash hermes-backup.sh   # pake env var
+#   bash hermes-backup.sh <BACKUP_DEVICE_IP>        # pake IP langsung (1x)
+#   BACKUP_IP=<BACKUP_DEVICE_IP> bash hermes-backup.sh   # pake env var
 #
 # Schedule: hermes cron create --name hermes-backup --script hermes-backup.sh --no-agent
 
@@ -23,7 +23,7 @@ elif [ -f "$CONFIG_FILE" ]; then
 else
     echo "❌ Backup target not configured!"
     echo "   Option 1: bash hermes-backup.sh <BACKUP_DEVICE_IP>"
-    echo "   Option 2: create $CONFIG_FILE with: BACKUP_IP=10.10.10.116"
+    echo "   Option 2: create $CONFIG_FILE with: BACKUP_IP=<YOUR_BACKUP_DEVICE_IP>"
     exit 1
 fi
 

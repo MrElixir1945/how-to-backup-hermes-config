@@ -60,7 +60,7 @@ chmod +x ~/.hermes/scripts/hermes-backup.sh
 Create `~/.hermes/scripts/backup-target.conf`:
 
 ```bash
-echo 'BACKUP_IP=10.10.10.116' > ~/.hermes/scripts/backup-target.conf
+echo 'BACKUP_IP=<YOUR_BACKUP_DEVICE_IP>' > ~/.hermes/scripts/backup-target.conf
 echo 'BACKUP_USER=root' >> ~/.hermes/scripts/backup-target.conf
 ```
 
@@ -117,10 +117,10 @@ hermes cron create \
 bash hermes-backup.sh
 
 # Using command-line IP (one-off)
-bash hermes-backup.sh 10.10.10.116
+bash hermes-backup.sh <YOUR_BACKUP_DEVICE_IP>
 
 # Using environment variable
-BACKUP_IP=10.10.10.116 bash hermes-backup.sh
+BACKUP_IP=<YOUR_BACKUP_DEVICE_IP> bash hermes-backup.sh
 ```
 
 ---

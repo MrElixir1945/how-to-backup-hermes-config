@@ -6,8 +6,10 @@
 # You'll be prompted to choose a backup and enter the target IP.
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-BACKUP_CT="root@10.10.10.116"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# ===== CONFIG — set your backup device IP here =====
+BACKUP_DEVICE_IP="YOUR_BACKUP_DEVICE_IP"   # <-- CHANGE THIS
+BACKUP_CT="root@$BACKUP_DEVICE_IP"
 
 clear 2>/dev/null || true
 echo "================================================"
@@ -19,7 +21,7 @@ echo ""
 echo "[1] Scanning backups on $BACKUP_CT..."
 echo ""
 
-BACKUP_LIST=$(ssh -n root@10.10.10.116 '
+BACKUP_LIST=$(ssh -n "$BACKUP_CT" '
 if [ -d /root/backups ]; then
   for d in /root/backups/*/; do
     [ -d "$d" ] && echo "$(basename "$d")|$(du -sh "$d" | cut -f1)|$d"
@@ -112,7 +114,7 @@ rsync -a --delete "$BACKUP_CT:$BACKUP_DIR/mnemosyne/" "$TARGET_USER@$TARGET_IP:$
 # Restore Hermes source
 echo ""
 echo "=== Step 4: Restore Hermes source code ==="
-if ssh -n root@10.10.10.116 "test -d $BACKUP_DIR/hermes-src" 2>/dev/null; then
+if ssh -n "$BACKUP_CT" "test -d $BACKUP_DIR/hermes-src" 2>/dev/null; then
     rsync -a --delete \
       --exclude='.git' --exclude='node_modules' --exclude='venv' --exclude='.venv' \
       --exclude='__pycache__' --exclude='*.pyc' \
