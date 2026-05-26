@@ -4,15 +4,15 @@ Step-by-step guide to automatically backup your **Hermes Agent** configuration, 
 
 ## What This Backs Up
 
-| File | Description | Pushed to GitHub? |
-|------|-------------|-------------------|
-| `config.yaml` | Provider settings, tools, integrations | ✅ Yes |
-| `skills/` | Your custom skills and workflows | ✅ Yes |
-| `state.db` | Session database | ✅ Yes |
-| `auth.json` | Authentication tokens | ✅ Yes |
-| `.env` | API keys & secrets | ❌ **Never** |
+| File | Description | Pushed to GitHub? | Local Archive? |
+|------|-------------|-------------------|----------------|
+| `config.yaml` | Provider settings, tools, integrations | ✅ Yes | ✅ Yes |
+| `skills/` | Your custom skills and workflows | ✅ Yes | ✅ Yes |
+| `.env` | API keys & secrets | ❌ **Never** | ✅ Yes |
+| `auth.json` | Authentication tokens | ❌ **Never** | ✅ Yes |
+| `state.db` | Session transcripts & chat history | ❌ **Never** | ✅ Yes |
 
-> Your `.env` (API keys, tokens, passwords) is **never** pushed to GitHub. It's only saved in a local `.tar.gz` archive.
+> 🔒 **Security:** `.env`, `auth.json`, and `state.db` are saved in a local `.tar.gz` archive **only**. They are never pushed to GitHub, even to a private repo.
 
 ## Setup
 
@@ -45,19 +45,11 @@ Create `~/.hermes/scripts/hermes-backup.sh`:
 HERMES_HOME="$HOME/.hermes"
 GIT_REPO="/root/hermes-backup"
 DATE=$(date +%Y-%m-%d)
-FILENAME="hermes-backup-$DATE.tar.gz"
 
-mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills" "$GIT_REPO/sessions"
-
+# Push safe files to GitHub (config.yaml & skills only)
+mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills"
 cp "$HERMES_HOME/config.yaml" "$GIT_REPO/config/" 2>/dev/null
-cp "$HERMES_HOME/state.db" "$GIT_REPO/sessions/" 2>/dev/null
-cp "$HERMES_HOME/auth.json" "$GIT_REPO/config/" 2>/dev/null
 cp -r "$HERMES_HOME/skills/"* "$GIT_REPO/skills/" 2>/dev/null
-
-# Full local backup (with .env, never pushed to GitHub)
-tar -czf "/root/$FILENAME" \
-  "$HERMES_HOME/config.yaml" "$HERMES_HOME/.env" \
-  "$HERMES_HOME/state.db" "$HERMES_HOME/skills" 2>/dev/null
 
 cd "$GIT_REPO" || exit 1
 if [ -n "$(git status --porcelain)" ]; then
@@ -65,11 +57,37 @@ if [ -n "$(git status --porcelain)" ]; then
     git commit -m "backup $DATE"
     git push origin HEAD:main
 fi
+
+# Full local backup (includes .env, auth.json, state.db — stays on server only)
+tar -czf "/root/hermes-backup-$DATE.tar.gz" \
+  "$HERMES_HOME/config.yaml" "$HERMES_HOME/.env" \
+  "$HERMES_HOME/auth.json" "$HERMES_HOME/state.db" \
+  "$HERMES_HOME/skills" 2>/dev/null
 ```
 
 Make it executable:
 ```bash
 chmod +x ~/.hermes/scripts/hermes-backup.sh
+```
+
+### 3b. Create .gitignore
+
+Create `/root/hermes-backup/.gitignore` to keep secrets out of git:
+
+```bash
+cat > /root/hermes-backup/.gitignore << 'EOF'
+# Secrets - never pushed to GitHub
+.env
+*.tar.gz
+auth.json
+config/auth.json
+state.db
+sessions/state.db
+*.tmp
+*.log
+EOF
+
+cd /root/hermes-backup && git add .gitignore && git commit -m "add .gitignore"
 ```
 
 ### 4. Schedule with Cron
@@ -119,10 +137,12 @@ tar -xzf /root/hermes-backup-YYYY-MM-DD.tar.gz -C ~/
 
 ## Security Notes
 
-- **Keep the GitHub repo PRIVATE** — it contains your config and auth tokens
-- The `.env` file is **never** committed to Git or pushed anywhere
-- If you accidentally expose a repo, rotate your API keys immediately
-- The local `.tar.gz` archive stays on your server only
+- **Keep the GitHub repo PRIVATE** — it contains your config and skills
+- `.env`, `auth.json`, and `state.db` are **never** committed to Git — they exist only in local `.tar.gz` archives on your server
+- State.db contains **all your chat transcripts** — treat it like a private message history
+- Auth.json contains **OAuth tokens** — rotate immediately if your repo is ever exposed
+- If you accidentally expose a repo, rotate ALL your API keys and tokens immediately
+- The local `.tar.gz` archive stays on your server only — clean old ones with `rm /root/hermes-backup-*.tar.gz`
 
 ## Requirements
 

@@ -1,0 +1,9 @@
+# Secrets - never pushed to GitHub
+.env
+*.tar.gz
+auth.json
+config/auth.json
+state.db
+sessions/state.db
+*.tmp
+*.log
