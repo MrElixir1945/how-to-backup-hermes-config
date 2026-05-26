@@ -24,6 +24,28 @@ bash setup-hermes.sh
 
 ---
 
+## SSH Key Setup
+
+Your Hermes server needs to connect to the backup device without a password. Run these commands **inside your Hermes server** (not from the Proxmox host):
+
+```bash
+# Generate SSH key
+ssh-keygen -t ed25519 -N ""
+
+# Copy to backup device
+ssh-copy-id root@<BACKUP_DEVICE_IP>
+```
+
+Enter the backup device's root password when prompted. After that, test:
+
+```bash
+ssh root@<BACKUP_DEVICE_IP> "echo OK"
+```
+
+> **Important:** If you are using an unprivileged LXC container, generate the key from **inside the container console**, not from the Proxmox host. Keys generated via `nsenter` on the host will have wrong permissions inside the container.
+
+---
+
 ## Manual Setup
 
 If you prefer to understand how it works:
