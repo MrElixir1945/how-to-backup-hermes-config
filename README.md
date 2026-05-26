@@ -8,6 +8,7 @@ Step-by-step guide to automatically backup your **Hermes Agent** configuration, 
 |------|-------------|-------------------|----------------|
 | `config.yaml` | Provider settings, tools, integrations | ✅ Yes | ✅ Yes |
 | `skills/` | Your custom skills and workflows | ✅ Yes | ✅ Yes |
+| `memories/` | MEMORY.md & USER.md — agent's knowledge about you | ✅ Yes | ✅ Yes |
 | `.env` | API keys & secrets | ❌ **Never** | ✅ Yes |
 | `auth.json` | Authentication tokens | ❌ **Never** | ✅ Yes |
 | `state.db` | Session transcripts & chat history | ❌ **Never** | ✅ Yes |
@@ -46,10 +47,11 @@ HERMES_HOME="$HOME/.hermes"
 GIT_REPO="/root/hermes-backup"
 DATE=$(date +%Y-%m-%d)
 
-# Push safe files to GitHub (config.yaml & skills only)
-mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills"
+# Push safe files to GitHub (config.yaml, skills/ & memories/ only)
+mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills" "$GIT_REPO/memories"
 cp "$HERMES_HOME/config.yaml" "$GIT_REPO/config/" 2>/dev/null
 cp -r "$HERMES_HOME/skills/"* "$GIT_REPO/skills/" 2>/dev/null
+cp -r "$HERMES_HOME/memories/"* "$GIT_REPO/memories/" 2>/dev/null
 
 cd "$GIT_REPO" || exit 1
 if [ -n "$(git status --porcelain)" ]; then
@@ -58,11 +60,11 @@ if [ -n "$(git status --porcelain)" ]; then
     git push origin HEAD:main
 fi
 
-# Full local backup (includes .env, auth.json, state.db — stays on server only)
+# Full local backup (includes .env, auth.json, state.db, memories — stays on server only)
 tar -czf "/root/hermes-backup-$DATE.tar.gz" \
   "$HERMES_HOME/config.yaml" "$HERMES_HOME/.env" \
   "$HERMES_HOME/auth.json" "$HERMES_HOME/state.db" \
-  "$HERMES_HOME/skills" 2>/dev/null
+  "$HERMES_HOME/skills" "$HERMES_HOME/memories" 2>/dev/null
 ```
 
 Make it executable:

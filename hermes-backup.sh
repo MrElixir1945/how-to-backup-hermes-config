@@ -1,10 +1,7 @@
 #!/bin/bash
 # Hermes Agent Auto-Backup
-# Push safe files (config.yaml + skills/) to GitHub.
+# Push safe files (config.yaml + skills/ + memories/) to GitHub.
 # Full backup (with .env, auth, sessions) saved locally as .tar.gz
-#
-# Usage: Copy to ~/.hermes/scripts/hermes-backup.sh
-# Schedule: hermes cron create --name hermes-backup --schedule "0 19 * * *" --script ~/.hermes/scripts/hermes-backup.sh --no-agent
 #
 # CONFIGURATION:
 HERMES_HOME="$HOME/.hermes"
@@ -13,15 +10,15 @@ DATE=$(date +%Y-%m-%d)
 MAX_LOCAL=7
 
 # ===== SAFE FILES → GITHUB =====
-# Only config.yaml and skills/ are pushed.
-# auth.json, state.db, .env are NEVER pushed — they stay in local backup only.
-mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills"
+# Only config.yaml, skills/, memories/ are pushed.
+# auth.json, state.db, .env are NEVER pushed — they stay in local archive.
+mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills" "$GIT_REPO/memories"
 
 cp "$HERMES_HOME/config.yaml" "$GIT_REPO/config/" 2>/dev/null
 cp -r "$HERMES_HOME/skills/"* "$GIT_REPO/skills/" 2>/dev/null
+cp -r "$HERMES_HOME/memories/"* "$GIT_REPO/memories/" 2>/dev/null
 
 cd "$GIT_REPO" || exit 1
-
 if [ -n "$(git status --porcelain)" ]; then
     git add .
     git commit -m "backup $DATE"
@@ -29,12 +26,14 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 # ===== FULL LOCAL BACKUP (with secrets) =====
-# This stays on your server only — includes .env, auth.json, state.db
+# Stays on your server only — includes .env, auth.json, state.db
 FILES=()
 for f in config.yaml .env state.db auth.json; do
     [ -f "$HERMES_HOME/$f" ] && FILES+=("$HERMES_HOME/$f")
 done
-[ -d "$HERMES_HOME/skills" ] && FILES+=("$HERMES_HOME/skills")
+for d in skills memories; do
+    [ -d "$HERMES_HOME/$d" ] && FILES+=("$HERMES_HOME/$d")
+done
 
 if [ ${#FILES[@]} -gt 0 ]; then
     tar -czf "/root/hermes-backup-$DATE.tar.gz" "${FILES[@]}" 2>/dev/null && \
