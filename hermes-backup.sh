@@ -3,45 +3,58 @@
 # Bisa dipake di Hermes mana aja, backup ke device mana aja.
 #
 # Cara pake:
-#   bash hermes-backup.sh                          # pake config file (~/.hermes/scripts/backup-target.conf)
-#   bash hermes-backup.sh <BACKUP_DEVICE_IP>        # pake IP langsung (1x)
-#   BACKUP_IP=<BACKUP_DEVICE_IP> bash hermes-backup.sh   # pake env var
+#   bash hermes-backup.sh                                              # pake config file
+#   bash hermes-backup.sh <BACKUP_DEVICE_IP>                           # pake IP langsung
+#   bash hermes-backup.sh <BACKUP_DEVICE_IP> <FOLDER_NAME>             # IP + nama folder custom
+#   BACKUP_IP=10.10.10.116 BACKUP_FOLDER=mrelixir bash hermes-backup.sh  # pake env var
+#
+# Config file: ~/.hermes/scripts/backup-target.conf
+#   BACKUP_IP=10.10.10.116
+#   BACKUP_USER=root
+#   BACKUP_FOLDER=mrelixir          # optional, default = hostname server
 #
 # Schedule: hermes cron create --name hermes-backup --script hermes-backup.sh --no-agent
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# ===== CONFIG — cari IP tujuan =====
+# ===== CONFIG — cari IP tujuan & nama folder =====
 CONFIG_FILE="$HOME/.hermes/scripts/backup-target.conf"
 
-if [ -n "$1" ]; then
+if [ -n "$2" ]; then
     BACKUP_IP="$1"
+    BACKUP_FOLDER="$2"
+elif [ -n "$1" ]; then
+    BACKUP_IP="$1"
+elif [ -n "$BACKUP_IP" ] && [ -n "$BACKUP_FOLDER" ]; then
+    :  # keduanya dari env var
 elif [ -n "$BACKUP_IP" ]; then
-    :
+    :  # IP dari env, folder pake hostname
 elif [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
-    echo "❌ Backup target not configured!"
-    echo "   Option 1: bash hermes-backup.sh <BACKUP_DEVICE_IP>"
-    echo "   Option 2: create $CONFIG_FILE with: BACKUP_IP=<YOUR_BACKUP_DEVICE_IP>"
+    echo "❌ Gak tau mau backup ke mana!"
+    echo "   Cara 1: bash hermes-backup.sh <IP_BACKUP_DEVICE> [NAMA_FOLDER]"
+    echo "   Cara 2: buat file $CONFIG_FILE isi:"
+    echo "     BACKUP_IP=10.10.10.116"
+    echo "     BACKUP_FOLDER=mrelixir"
     exit 1
 fi
 
 BACKUP_USER="${BACKUP_USER:-root}"
 BACKUP_CT="${BACKUP_USER}@${BACKUP_IP}"
-HOSTNAME=$(hostname -s 2>/dev/null || echo "unknown")
-BACKUP_DIR="/root/backups/$HOSTNAME"
+BACKUP_FOLDER="${BACKUP_FOLDER:-$(hostname -s)}"
+BACKUP_DIR="/root/backups/$BACKUP_FOLDER"
 
 HERMES_HOME="$HOME/.hermes"
 HERMES_SRC="/usr/local/lib/hermes-agent"
 DATE=$(date +%Y-%m-%d_%H-%M-%S)
-FILENAME="hermes-backup-$HOSTNAME-$DATE.tar.gz"
+FILENAME="hermes-backup-$BACKUP_FOLDER-$DATE.tar.gz"
 MAX_LOCAL=7
 
 START_TS=$(date +%s)
 
 echo "======= HERMES BACKUP ======="
-echo "Hostname:  $HOSTNAME"
+echo "Folder:    $BACKUP_FOLDER"
 echo "Date:      $DATE"
 echo "Target:    $BACKUP_CT:$BACKUP_DIR"
 echo ""
@@ -102,5 +115,5 @@ DURATION=$((END_TS - START_TS))
 echo "======= BACKUP COMPLETE ======="
 echo "Status: ✅ Success"
 echo "Duration: ${DURATION}s"
-echo "Hostname: $HOSTNAME -> $BACKUP_IP:$BACKUP_DIR"
-echo "Local:    /root/$FILENAME"
+echo "Folder: $BACKUP_FOLDER -> $BACKUP_IP:$BACKUP_DIR"
+echo "Local:  /root/$FILENAME"

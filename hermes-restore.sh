@@ -2,8 +2,13 @@
 # Hermes Agent Restore — Universal
 # Restore Hermes backup from backup device to any server.
 #
+# Flow:
+#   1. Pilih backup mana yang mau di-restore (dari daftar folder di backup device)
+#   2. Masukkin IP server Hermes tujuan (server baru / yang ilang)
+#   3. Konfirmasi -> otomatis kirim semua file dari backup device ke server tujuan
+#   4. Hermes langsung nyala 100% persis kayak sebelum ilang
+#
 # Usage: bash hermes-restore.sh
-# You'll be prompted to choose a backup and enter the target IP.
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
@@ -13,12 +18,19 @@ BACKUP_CT="root@$BACKUP_DEVICE_IP"
 
 clear 2>/dev/null || true
 echo "================================================"
-echo "     HERMES RESTORE — From Backup Device"
+echo "     HERMES RESTORE — Dari Backup Device"
 echo "================================================"
 echo ""
+echo "Cara pake:"
+echo "  1. Pilih folder backup yang mau dipulihin"
+echo "  2. Masukkin IP server Hermes tujuan"
+echo "  3. Ketik RESTORE -> otomatis kirim file"
+echo ""
 
-# Scan available backups
-echo "[1] Scanning backups on $BACKUP_CT..."
+# ===== Step 1: Cari backup yang tersedia =====
+echo "------------------------------------------"
+echo "  LANGKAH 1: Pilih Backup"
+echo "------------------------------------------"
 echo ""
 
 BACKUP_LIST=$(ssh -n "$BACKUP_CT" '
@@ -29,9 +41,17 @@ if [ -d /root/backups ]; then
 fi' 2>/dev/null)
 
 if [ -z "$BACKUP_LIST" ]; then
-    echo "❌ No backups found on $BACKUP_CT!"
+    echo "❌ Tidak ada backup ditemukan di $BACKUP_CT!"
+    echo ""
+    echo "Pastikan:"
+    echo "  - IP backup device sudah bener ($BACKUP_DEVICE_IP)"
+    echo "  - SSH key sudah terdaftar"
+    echo "  - Ada folder di /root/backups/*/"
     exit 1
 fi
+
+echo "Backup yang tersedia di $BACKUP_CT:"
+echo ""
 
 IFS=$'\n'
 BACKUP_ITEMS=($BACKUP_LIST)
@@ -51,9 +71,9 @@ for item in "${BACKUP_ITEMS[@]}"; do
 done
 
 echo ""
-read -r -p "Select backup number: " CHOICE
+read -r -p "Masukkin nomor backup: " CHOICE
 if ! [[ "$CHOICE" =~ ^[0-9]+$ ]] || [ "$CHOICE" -ge "${#DIRS[@]}" ]; then
-    echo "❌ Invalid choice!"
+    echo "❌ Nomor gak valid!"
     exit 1
 fi
 
@@ -61,10 +81,17 @@ BACKUP_DIR="${DIRS[$CHOICE]}"
 BACKUP_NAME="${NAMES[$CHOICE]}"
 
 echo ""
-read -r -p "Target Hermes server IP (e.g. 192.168.1.100): " TARGET_IP
+echo "------------------------------------------"
+echo "  LANGKAH 2: Target Server"
+echo "------------------------------------------"
+echo ""
+echo "Backup yang dipilih: $BACKUP_NAME ($(ssh -n "$BACKUP_CT" "du -sh $BACKUP_DIR 2>/dev/null | cut -f1"))"
+echo ""
+
+read -r -p "IP server Hermes tujuan (contoh: 192.168.1.100): " TARGET_IP
 
 if [ -z "$TARGET_IP" ]; then
-    echo "❌ IP is required!"
+    echo "❌ IP wajib diisi!"
     exit 1
 fi
 
@@ -74,35 +101,55 @@ TARGET_SRC="/usr/local/lib/hermes-agent"
 
 echo ""
 echo "================================================"
-echo "  RESTORE: $BACKUP_NAME"
-echo "  From:    $BACKUP_CT"
-echo "  To:      $TARGET_IP"
+echo "  RINGKASAN RESTORE"
+echo "================================================"
+echo "  Backup:    $BACKUP_NAME"
+echo "  Dari:      $BACKUP_CT"
+echo "  Ke:        $TARGET_IP"
+echo "  Isi:       config, skills, sessions, cron,"
+echo "             mnemosyne, hermes source code"
 echo "================================================"
 echo ""
-echo "⚠️  WARNING: This will OVERWRITE all Hermes files on $TARGET_IP!"
+echo "⚠️  PERINGATAN: Semua file Hermes di $TARGET_IP akan ditimpa!"
+echo "   File lama akan dibackup dulu ke: $TARGET_HOME.bak.$TIMESTAMP"
 echo ""
-read -r -p "Type 'RESTORE' to continue: " CONFIRM
+
+# ===== Step 2: Konfirmasi =====
+echo "------------------------------------------"
+echo "  LANGKAH 3: Konfirmasi"
+echo "------------------------------------------"
+echo ""
+read -r -p "Ketik 'RESTORE' untuk lanjut: " CONFIRM
 if [ "$CONFIRM" != "RESTORE" ]; then
-    echo "❌ Restore cancelled."
+    echo "❌ Restore dibatalkan."
     exit 1
 fi
 
-# Backup existing files on target
+# ===== Step 3: Backup file lama di server tujuan =====
 echo ""
-echo "=== Step 1: Backup existing files on target ==="
+echo "------------------------------------------"
+echo "  PROSES: Backup file lama"
+echo "------------------------------------------"
+echo ""
 ssh "$TARGET_USER@$TARGET_IP" "mkdir -p $TARGET_HOME.bak.$TIMESTAMP" 2>/dev/null
 ssh "$TARGET_USER@$TARGET_IP" "cp $TARGET_HOME/config.yaml $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null; cp $TARGET_HOME/.env $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null; cp $TARGET_HOME/auth.json $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null; cp $TARGET_HOME/state.db $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null; cp -r $TARGET_HOME/skills $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null; cp -r $TARGET_HOME/cron $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null; cp -r $TARGET_HOME/mnemosyne $TARGET_HOME.bak.$TIMESTAMP/ 2>/dev/null" 2>/dev/null
-echo "  [OK] Backed up -> $TARGET_IP:$TARGET_HOME.bak.$TIMESTAMP"
+echo "  [OK] File lama disimpan di -> $TARGET_IP:$TARGET_HOME.bak.$TIMESTAMP"
 
-# Stop Hermes on target
+# ===== Step 4: Hentikan Hermes di server tujuan =====
 echo ""
-echo "=== Step 2: Stop Hermes on target ==="
+echo "------------------------------------------"
+echo "  PROSES: Hentikan Hermes"
+echo "------------------------------------------"
+echo ""
 ssh "$TARGET_USER@$TARGET_IP" "pkill -f 'hermes.*gateway' 2>/dev/null || true; sleep 1" 2>/dev/null
-echo "  [OK] Gateway stopped"
+echo "  [OK] Hermes gateway dihentikan"
 
-# Push backup to target
+# ===== Step 5: Kirim backup =====
 echo ""
-echo "=== Step 3: Push backup to $TARGET_IP ==="
+echo "------------------------------------------"
+echo "  PROSES: Kirim backup ke $TARGET_IP"
+echo "------------------------------------------"
+echo ""
 rsync -a "$BACKUP_CT:$BACKUP_DIR/config/config.yaml" "$TARGET_USER@$TARGET_IP:$TARGET_HOME/" 2>/dev/null && echo "  [OK] config.yaml" || echo "  [SKIP] config.yaml"
 rsync -a "$BACKUP_CT:$BACKUP_DIR/config/.env" "$TARGET_USER@$TARGET_IP:$TARGET_HOME/" 2>/dev/null && echo "  [OK] .env" || echo "  [SKIP] .env"
 rsync -a "$BACKUP_CT:$BACKUP_DIR/config/auth.json" "$TARGET_USER@$TARGET_IP:$TARGET_HOME/" 2>/dev/null && echo "  [OK] auth.json" || echo "  [SKIP] auth.json"
@@ -111,40 +158,52 @@ rsync -a --delete "$BACKUP_CT:$BACKUP_DIR/skills/" "$TARGET_USER@$TARGET_IP:$TAR
 rsync -a --delete "$BACKUP_CT:$BACKUP_DIR/cron/" "$TARGET_USER@$TARGET_IP:$TARGET_HOME/cron/" 2>/dev/null && echo "  [OK] cron/" || echo "  [SKIP] cron/"
 rsync -a --delete "$BACKUP_CT:$BACKUP_DIR/mnemosyne/" "$TARGET_USER@$TARGET_IP:$TARGET_HOME/mnemosyne/" 2>/dev/null && echo "  [OK] mnemosyne/" || echo "  [SKIP] mnemosyne/"
 
-# Restore Hermes source
+# ===== Step 6: Restore Hermes source =====
 echo ""
-echo "=== Step 4: Restore Hermes source code ==="
+echo "------------------------------------------"
+echo "  PROSES: Restore source code"
+echo "------------------------------------------"
+echo ""
 if ssh -n "$BACKUP_CT" "test -d $BACKUP_DIR/hermes-src" 2>/dev/null; then
     rsync -a --delete \
       --exclude='.git' --exclude='node_modules' --exclude='venv' --exclude='.venv' \
       --exclude='__pycache__' --exclude='*.pyc' \
-      "$BACKUP_CT:$BACKUP_DIR/hermes-src/" "$TARGET_USER@$TARGET_IP:$TARGET_SRC/" 2>/dev/null && echo "  [OK] hermes source"
+      "$BACKUP_CT:$BACKUP_DIR/hermes-src/" "$TARGET_USER@$TARGET_IP:$TARGET_SRC/" 2>/dev/null && echo "  [OK] hermes source code"
 else
-    echo "  [SKIP] hermes source (not in this backup)"
+    echo "  [SKIP] hermes source (tidak ada di backup ini)"
 fi
 
-# Fix permissions
+# ===== Step 7: Fix permissions =====
 echo ""
-echo "=== Step 5: Fix permissions ==="
+echo "------------------------------------------"
+echo "  PROSES: Fix permissions"
+echo "------------------------------------------"
+echo ""
 ssh "$TARGET_USER@$TARGET_IP" "chmod 600 $TARGET_HOME/.env $TARGET_HOME/auth.json $TARGET_HOME/state.db 2>/dev/null" 2>/dev/null
 echo "  [OK] permissions"
 
-# Restart Hermes
+# ===== Step 8: Restart Hermes =====
 echo ""
-echo "=== Step 6: Restart Hermes ==="
+echo "------------------------------------------"
+echo "  PROSES: Start Hermes"
+echo "------------------------------------------"
+echo ""
 ssh "$TARGET_USER@$TARGET_IP" "cd $TARGET_SRC 2>/dev/null; nohup hermes gateway start > /dev/null 2>&1 &" 2>/dev/null
-echo "  [OK] Hermes restarted on $TARGET_IP"
+sleep 2
+echo "  [OK] Hermes gateway dijalankan di $TARGET_IP"
 
 echo ""
 echo "================================================"
-echo "  ✅ RESTORE COMPLETE!"
+echo "  ✅ RESTORE SELESAI!"
 echo "================================================"
-echo "  Backup:  $BACKUP_NAME"
-echo "  From:    $BACKUP_CT"
-echo "  To:      $TARGET_IP"
-echo "  Old files: $TARGET_HOME.bak.$TIMESTAMP"
 echo ""
-echo "To rollback:"
+echo "  Backup:  $BACKUP_NAME"
+echo "  Dari:    $BACKUP_CT"
+echo "  Ke:      $TARGET_IP"
+echo ""
+echo "  File lama disimpan di: $TARGET_HOME.bak.$TIMESTAMP"
+echo ""
+echo "  Kalo error, balikin dengan:"
 echo "  ssh $TARGET_USER@$TARGET_IP 'cp $TARGET_HOME.bak.$TIMESTAMP/config.yaml $TARGET_HOME/'"
 echo "  ssh $TARGET_USER@$TARGET_IP 'cp $TARGET_HOME.bak.$TIMESTAMP/.env $TARGET_HOME/'"
 echo ""
