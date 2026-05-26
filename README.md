@@ -141,9 +141,28 @@ No duplicate scripts, no hardcoded paths — configure once per server.
 
 ---
 
+## One-Click Setup (Restore + Auto Backup)
+
+On a **fresh Hermes installation**, just run one script — it'll restore data, setup cron backup, and save config:
+
+```bash
+curl -o setup-hermes.sh https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/setup-hermes.sh
+bash setup-hermes.sh  # interaktif, dia bakal tanya IP backup device
+# Atau langsung: bash setup-hermes.sh 192.168.1.100
+```
+
+**Yang dilakuin:**
+1. Tes koneksi ke backup device
+2. Download & jalanin restore (kalo ada backup)
+3. Setup `backup-target.conf` biar backup.sh tau IP tujuan
+4. Setup cron backup otomatis (default jam 3 pagi)
+5. Tawarin backup pertama sekarang juga
+
+---
+
 ## Restore
 
-On a **fresh Hermes installation**, run the restore script from any machine that has SSH access to both the backup device and the target server:
+Kalo pengen manual, atau cuma restore doang tanpa setup cron:
 
 ```bash
 # Download restore script
