@@ -1,39 +1,39 @@
 # Hermes Agent Auto-Backup & Restore
 
-Backup & restore Hermes Agent ke device lokal (CT/VM/server) via SSH. **No cloud, no third party.**
+Backup and restore your Hermes Agent config, skills, sessions, and memory to a local device (CT/VM/server) via SSH. No cloud involved.
 
 ---
 
-## 🚀 Cara Termudah — 1 Script Doang
+## Quick Start
 
-Buat server Hermes baru? Tinggal curl & jalanin:
+On a fresh Hermes server, run this and you're done:
 
 ```bash
 curl -o setup-hermes.sh https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/setup-hermes.sh
 bash setup-hermes.sh
 ```
 
-**Yang terjadi:**
-1. Tanya IP backup device → tes koneksi SSH
-2. Restore data (kalo ada backup)
-3. Bikin file config biar tau IP tujuan
-4. Pasang cron backup otomatis (bisa atur jam)
-5. Backup pertama bisa langsung jalan
+**What it does:**
+1. Ask for your backup device IP and test SSH connection
+2. Restore existing backup (if available)
+3. Save config so future backups know where to go
+4. Set up automatic daily backup (you pick the time)
+5. Optionally run the first backup right away
 
 ---
 
-## 🛠️ Cara Manual (Step by Step)
+## Manual Setup
 
-Kalo mau setup manual atau paham cara kerja:
+If you prefer to understand how it works:
 
 ### 1. Backup Script
 
 ```bash
-# Download script backup
+# Download the backup script
 curl -o ~/.hermes/scripts/hermes-backup.sh https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/hermes-backup.sh
 chmod +x ~/.hermes/scripts/hermes-backup.sh
 
-# Buat config — isi IP backup device lu
+# Create config file — set your backup device IP
 echo 'BACKUP_IP=192.168.1.100' > ~/.hermes/scripts/backup-target.conf
 echo 'BACKUP_USER=root' >> ~/.hermes/scripts/backup-target.conf
 ```
@@ -44,7 +44,7 @@ echo 'BACKUP_USER=root' >> ~/.hermes/scripts/backup-target.conf
 bash ~/.hermes/scripts/hermes-backup.sh
 ```
 
-### 3. Auto Backup (Cron)
+### 3. Schedule Daily Backup
 
 ```bash
 hermes cron create \
@@ -54,57 +54,57 @@ hermes cron create \
   --no-agent
 ```
 
-> ⏰ Cron pake timezone server. Kalo server UTC, `0 19 * * *` = jam 3 pagi WITA.
+> Cron uses your server's timezone. If your server is UTC, `0 19 * * *` = 3 AM WITA (Bali time).
 
 ---
 
-## ♻️ Restore Data
+## Restore
 
-Kalo server ilang / ganti baru, tinggal restore:
+If your server dies or you need to move to a new one:
 
 ```bash
 curl -o restore.sh https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/hermes-restore.sh
 bash restore.sh
 ```
 
-Nanti bakal tanya:
-1. **Pilih backup** — milih dari daftar folder backup yang ada
-2. **IP server tujuan** — server baru yang mau dipulihin
-3. **Konfirmasi** — ketik RESTORE, beres ✅
+It will ask:
+1. **Pick a backup** — choose from the list of folders on the backup device
+2. **Target IP** — your new server's IP
+3. **Confirm** — type RESTORE and you're done
 
 ---
 
-## 📁 Apa Aja Yang Dibackup?
+## What Gets Backed Up
 
-| Item | Deskripsi | Backup | Lokal |
-|------|-----------|--------|-------|
-| `config.yaml` | Setting provider, tools, dll | ✅ | ✅ |
-| `skills/` | Skill & workflow | ✅ | ✅ |
-| `.env` | API keys & secrets | ✅ (via SSH) | ✅ |
-| `auth.json` | Token autentikasi | ✅ (via SSH) | ✅ |
-| `state.db` | Riwayat chat | ✅ | ✅ |
-| `mnemosyne/` | Memori jangka panjang | ✅ | ❌ |
-| `cron/` | Jadwal otomatis | ✅ | ❌ |
-| Source code | Kode Hermes Agent | ✅ | ❌ |
+| Item | Description | Remote Backup | Local Archive |
+|------|-------------|---------------|---------------|
+| config.yaml | Provider & tool settings | Yes | Yes |
+| skills/ | Custom skills & workflows | Yes | Yes |
+| .env | API keys & secrets | Yes (via SSH) | Yes |
+| auth.json | Authentication tokens | Yes (via SSH) | Yes |
+| state.db | Chat history & sessions | Yes | Yes |
+| mnemosyne/ | Long-term memory | Yes | No |
+| cron/ | Scheduled jobs | Yes | No |
+| Hermes source | Agent source code | Yes | No |
 
-Semua file ada di `/root/backups/<hostname>/` di backup device.
-
----
-
-## 🧠 Multi Server
-
-Pake script yang sama di semua server Hermes. Tinggal tambahin SSH key masing-masing ke backup device. Otomatis kebikin folder sendiri-sendiri per hostname.
+All files live under `/root/backups/<hostname>/` on the backup device.
 
 ---
 
-## 🔒 Keamanan
+## Multiple Servers
 
-- Semua di **jaringan lokal** — gak ada yang ke cloud
-- Koneksi via SSH key — gak pake password
-- Backup lewat `rsync` — data terenkripsi tunnel SSH
+Same script works on every Hermes server. Add each server's SSH key to the backup device and each one automatically gets its own folder by hostname.
 
 ---
 
-## 📜 License
+## Security
+
+- Everything stays on your local network
+- SSH key authentication only — no passwords
+- rsync over SSH tunnel (encrypted)
+
+---
+
+## License
 
 MIT
