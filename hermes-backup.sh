@@ -1,23 +1,23 @@
 #!/bin/bash
 # Hermes Agent Auto-Backup — Universal
-# Bisa dipake di Hermes mana aja, backup ke device mana aja.
+# Works on any Hermes server, backs up to any device on your network.
 #
-# Cara pake:
-#   bash hermes-backup.sh                                              # pake config file
-#   bash hermes-backup.sh <BACKUP_DEVICE_IP>                           # pake IP langsung
-#   bash hermes-backup.sh <BACKUP_DEVICE_IP> <FOLDER_NAME>             # IP + nama folder custom
-#   BACKUP_IP=192.168.1.100 BACKUP_FOLDER=my-server bash hermes-backup.sh  # pake env var
+# Usage:
+#   bash hermes-backup.sh                                              # uses config file
+#   bash hermes-backup.sh <BACKUP_DEVICE_IP>                           # specify IP directly
+#   bash hermes-backup.sh <BACKUP_DEVICE_IP> <FOLDER_NAME>             # custom folder name
+#   BACKUP_IP=192.168.1.100 BACKUP_FOLDER=my-server bash hermes-backup.sh  # env vars
 #
 # Config file: ~/.hermes/scripts/backup-target.conf
 #   BACKUP_IP=192.168.1.100
 #   BACKUP_USER=root
-#   BACKUP_FOLDER=my-server          # optional, default = hostname server
+#   BACKUP_FOLDER=my-server          # optional, defaults to server hostname
 #
 # Schedule: hermes cron create --name hermes-backup --script hermes-backup.sh --no-agent
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# ===== CONFIG — cari IP tujuan & nama folder =====
+# ===== CONFIG — find target IP & folder name =====
 CONFIG_FILE="$HOME/.hermes/scripts/backup-target.conf"
 
 if [ -n "$2" ]; then
@@ -26,15 +26,15 @@ if [ -n "$2" ]; then
 elif [ -n "$1" ]; then
     BACKUP_IP="$1"
 elif [ -n "$BACKUP_IP" ] && [ -n "$BACKUP_FOLDER" ]; then
-    :  # keduanya dari env var
+    :  # both from env vars
 elif [ -n "$BACKUP_IP" ]; then
-    :  # IP dari env, folder pake hostname
+    :  # IP from env, folder uses hostname
 elif [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
 else
-    echo "❌ Gak tau mau backup ke mana!"
-    echo "   Cara 1: bash hermes-backup.sh <IP_BACKUP_DEVICE> [NAMA_FOLDER]"
-    echo "   Cara 2: buat file $CONFIG_FILE isi:"
+    echo "No backup target configured!"
+    echo "  Option 1: bash hermes-backup.sh <BACKUP_DEVICE_IP> [FOLDER_NAME]"
+    echo "  Option 2: create $CONFIG_FILE with:"
     echo "     BACKUP_IP=192.168.1.100"
     echo "     BACKUP_FOLDER=my-server"
     exit 1

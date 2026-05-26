@@ -1,15 +1,15 @@
 #!/bin/bash
 # Setup Hermes — Restore + Auto Backup + Config
-# Satu skrip buat balikin data + nyetel backup harian.
+# One script to restore data, configure backups, and set up cron.
 #
-# Cara pake:
-#   bash setup-hermes.sh                              # interaktif
-#   bash setup-hermes.sh <BACKUP_DEVICE_IP>            # langsung pake IP
+# Usage:
+#   bash setup-hermes.sh                          # interactive
+#   bash setup-hermes.sh <BACKUP_DEVICE_IP>        # pass IP directly
 #
-# Nanti bakal:
-#   1. Restore data dari backup device
-#   2. Setup cron backup otomatis tiap 3 pagi
-#   3. Simpan konfigurasi backup-target.conf
+# What it does:
+#   1. Restore data from backup device (if available)
+#   2. Save backup-target.conf config
+#   3. Schedule automatic daily backup via cron
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
@@ -18,44 +18,42 @@ echo "     SETUP HERMES — Restore + Auto Backup"
 echo "================================================"
 echo ""
 
-# ===== Cek argument / minta IP backup device =====
+# ===== Get backup device IP =====
 if [ -n "$1" ]; then
     BACKUP_DEVICE_IP="$1"
 else
-    read -r -p "IP backup device (tempat nyimpen backup): " BACKUP_DEVICE_IP
+    read -r -p "Backup device IP: " BACKUP_DEVICE_IP
 fi
 
 if [ -z "$BACKUP_DEVICE_IP" ]; then
-    echo "❌ IP backup device wajib diisi!"
+    echo "ERROR: Backup device IP is required."
     exit 1
 fi
 
-# Test koneksi dulu
+# Test connection first
 echo ""
-echo "⏳ Tes koneksi ke backup device..."
+echo "Testing connection to backup device..."
 if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "root@$BACKUP_DEVICE_IP" "echo OK" 2>/dev/null; then
-    echo "❌ Gak bisa connect ke root@$BACKUP_DEVICE_IP"
+    echo "ERROR: Cannot connect to root@$BACKUP_DEVICE_IP"
     echo ""
-    echo "Pastikan:"
-    echo "  - SSH key sudah terdaftar (ssh-copy-id root@$BACKUP_DEVICE_IP)"
-    echo "  - IP-nya bener"
-    echo "  - Backup device nyala"
+    echo "Make sure:"
+    echo "  - SSH key is set up (ssh-copy-id root@$BACKUP_DEVICE_IP)"
+    echo "  - The IP is correct"
+    echo "  - The backup device is running"
     exit 1
 fi
-echo "✅ Koneksi OK!"
+echo "OK - Connection successful!"
 echo ""
 
-# ===== Step 1: Backup config file =====
+# ===== Step 1: Save config =====
 echo "------------------------------------------"
-echo "  LANGKAH 1: Setup Config"
+echo "  STEP 1: Configuration"
 echo "------------------------------------------"
 echo ""
 
-# Bikin folder scripts kalo belum ada
 mkdir -p ~/.hermes/scripts
 
-# Simpan konfigurasi backup
-read -r -p "Nama folder backup (enter aja kalo mau pake hostname): " FOLDER_NAME
+read -r -p "Backup folder name (press Enter to use hostname): " FOLDER_NAME
 if [ -z "$FOLDER_NAME" ]; then
     FOLDER_NAME="$(hostname -s)"
 fi
@@ -65,43 +63,40 @@ BACKUP_IP=$BACKUP_DEVICE_IP
 BACKUP_USER=root
 BACKUP_FOLDER=$FOLDER_NAME
 EOF
-echo "✅ Config disimpan di ~/.hermes/scripts/backup-target.conf"
+echo "Saved config to ~/.hermes/scripts/backup-target.conf"
 
-# Download backup script juga
+# Download backup script if not present
 if [ ! -f ~/.hermes/scripts/hermes-backup.sh ]; then
-    echo "⏳ Download hermes-backup.sh..."
+    echo "Downloading hermes-backup.sh..."
     curl -s -o ~/.hermes/scripts/hermes-backup.sh \
         https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/hermes-backup.sh
     chmod +x ~/.hermes/scripts/hermes-backup.sh
-    echo "✅ hermes-backup.sh siap"
+    echo "OK - hermes-backup.sh ready"
 fi
 
 echo ""
 
-# ===== Step 2: Cek backup yang tersedia =====
+# ===== Step 2: Check for existing backups =====
 echo "------------------------------------------"
-echo "  LANGKAH 2: Restore Data"
+echo "  STEP 2: Restore Data"
 echo "------------------------------------------"
 echo ""
 
-# Cek apa ada backup
 BACKUP_LIST=$(ssh -n "root@$BACKUP_DEVICE_IP" 'if [ -d /root/backups ]; then for d in /root/backups/*/; do [ -d "$d" ] && echo "$(basename "$d")|$(du -sh "$d" | cut -f1)"; done; fi' 2>/dev/null)
 
 if [ -z "$BACKUP_LIST" ]; then
-    echo "ℹ️  Gak ada backup di $BACKUP_DEVICE_IP — lewatin restore."
-    echo "   Nanti backup pertama jalan otomatis malam ini."
+    echo "No backups found on $BACKUP_DEVICE_IP — skipping restore."
+    echo "The first backup will run automatically tonight."
     echo ""
-    read -r -p "Langsung setup cron backup aja? (y/n): " SKIP_RESTORE
+    read -r -p "Proceed to cron setup? (y/n): " SKIP_RESTORE
     if [[ "$SKIP_RESTORE" =~ ^[Yy]$ ]]; then
-        # Langsung ke cron setup
         :
     else
-        echo "Ok, keluar."
+        echo "Exiting."
         exit 0
     fi
 else
-    # Ada backup, tanya mau restore atau skip
-    echo "Backup tersedia:"
+    echo "Available backups:"
     echo ""
 
     IFS=$'\n'
@@ -113,54 +108,50 @@ else
     done
 
     echo ""
-    read -r -p "Mau restore backup? (y/n): " DO_RESTORE
+    read -r -p "Restore a backup? (y/n): " DO_RESTORE
 
     if [[ "$DO_RESTORE" =~ ^[Yy]$ ]]; then
-        # Download restore script
-        echo "⏳ Download hermes-restore.sh..."
+        echo "Downloading restore script..."
         curl -s -o /tmp/hermes-restore.sh \
             https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/hermes-restore.sh
 
-        # Ganti IP backup device
         sed -i "s/YOUR_BACKUP_DEVICE_IP/$BACKUP_DEVICE_IP/g" /tmp/hermes-restore.sh
         chmod +x /tmp/hermes-restore.sh
 
-        echo "✅ Siap! Jalanin restore..."
+        echo "Ready! Running restore..."
         echo ""
         bash /tmp/hermes-restore.sh
 
         rm -f /tmp/hermes-restore.sh
     else
-        echo "ℹ️  Restore dilewatin."
+        echo "Restore skipped."
     fi
 fi
 
 echo ""
 
-# ===== Step 3: Setup cron backup =====
+# ===== Step 3: Setup cron =====
 echo "------------------------------------------"
-echo "  LANGKAH 3: Setup Cron Backup"
+echo "  STEP 3: Schedule Automatic Backup"
 echo "------------------------------------------"
 echo ""
 
-# Cek apa udah ada cron
 EXISTING_CRON=$(hermes cron list 2>/dev/null | grep -i "hermes-backup")
 
 if [ -n "$EXISTING_CRON" ]; then
-    echo "ℹ️  Cron backup udah ada:"
+    echo "A backup cron job already exists:"
     echo "   $EXISTING_CRON"
     echo ""
 else
-    read -r -p "Jam berapa backup otomatis? (default: 3, berarti 03:00): " BACKUP_HOUR
+    read -r -p "Hour for daily backup? (0-23, default 3 = 03:00): " BACKUP_HOUR
     BACKUP_HOUR="${BACKUP_HOUR:-3}"
 
-    # Validasi angka
     if ! [[ "$BACKUP_HOUR" =~ ^[0-9]+$ ]] || [ "$BACKUP_HOUR" -lt 0 ] || [ "$BACKUP_HOUR" -gt 23 ]; then
-        echo "⚠️  Jam gak valid, pake default 3."
+        echo "Invalid hour. Using default (3)."
         BACKUP_HOUR=3
     fi
 
-    echo "⏳ Setup cron backup jam ${BACKUP_HOUR}:00..."
+    echo "Setting up cron for ${BACKUP_HOUR}:00 daily..."
     hermes cron create \
         --name "hermes-backup" \
         --schedule "0 $BACKUP_HOUR * * *" \
@@ -168,40 +159,36 @@ else
         --no-agent 2>/dev/null
 
     if [ $? -eq 0 ]; then
-        echo "✅ Cron backup sukses!"
+        echo "OK - Cron backup created successfully!"
     else
-        echo "⚠️  Gagal pake hermes cron, coba cara manual..."
-        # Fallback: bikin cron langsung
+        echo "hermes cron failed, falling back to system crontab..."
         (crontab -l 2>/dev/null | grep -v "hermes-backup"; echo "0 $BACKUP_HOUR * * * cd ~/.hermes/scripts && bash hermes-backup.sh") | crontab -
-        echo "✅ Cron manual di /etc/crontab / crontab user"
+        echo "OK - System crontab updated"
     fi
 fi
 
 echo ""
 
-# ===== Selesai =====
+# ===== Done =====
 echo "================================================"
-echo "  ✅ SETUP SELESAI!"
+echo "  SETUP COMPLETE!"
 echo "================================================"
 echo ""
 echo "  Backup device:  $BACKUP_DEVICE_IP"
-echo "  Folder backup:  $FOLDER_NAME"
+echo "  Backup folder:  $FOLDER_NAME"
 echo ""
-echo "  File config:    ~/.hermes/scripts/backup-target.conf"
+echo "  Config file:    ~/.hermes/scripts/backup-target.conf"
 echo "  Backup script:  ~/.hermes/scripts/hermes-backup.sh"
 echo ""
-echo "  Backup otomatis tiap jam ${BACKUP_HOUR}:00"
+echo "  Scheduled at:   ${BACKUP_HOUR}:00 daily"
 echo ""
 
-# Jalanin backup pertama sekarang?
-read -r -p "Jalanin backup sekarang juga? (y/n): " RUN_NOW
+read -r -p "Run the first backup now? (y/n): " RUN_NOW
 if [[ "$RUN_NOW" =~ ^[Yy]$ ]]; then
     echo ""
-    echo "⏳ Backup pertama..."
+    echo "Running first backup..."
     bash ~/.hermes/scripts/hermes-backup.sh
-    echo ""
-    echo "✅ Selesai!"
 fi
 
 echo ""
-echo "Enjoy Bos 🚀"
+echo "Done."
