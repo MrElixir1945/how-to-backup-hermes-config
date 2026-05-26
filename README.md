@@ -126,15 +126,18 @@ chmod +x ~/.hermes/scripts/hermes-backup.sh
 
 ### 5. Schedule with Cron
 
+The cron schedule uses your **server's local timezone**. Pick a time when the server is idle (e.g., early morning):
+
 ```bash
+# Example: backup daily at 3 AM (server local time)
 hermes cron create \
   --name "hermes-backup" \
-  --schedule "0 19 * * *" \
+  --schedule "0 3 * * *" \
   --script ~/.hermes/scripts/hermes-backup.sh \
   --no-agent
 ```
 
-This runs the backup daily at **7 PM UTC**.
+> 💡 **Timezone tip:** If your server is in UTC but you want backup at 3 AM WITA/Bali (+08:00), use `"0 19 * * *"` (19:00 UTC = 03:00 WITA next day). Check your timezone with `timedatectl`.
 
 ### 6. Test It
 
@@ -176,7 +179,7 @@ tar -xzf /root/hermes-backup-YYYY-MM-DD.tar.gz -C ~/
 
 ## What to Expect
 
-Every day at 7 PM UTC:
+Every day at your scheduled time:
 1. All Hermes config, skills, sessions, memory backed up to the remote device via rsync
 2. Full archive (including `.env`) saved locally at `/root/hermes-backup-YYYY-MM-DD.tar.gz`
 3. Local archives older than 7 days auto-cleaned
