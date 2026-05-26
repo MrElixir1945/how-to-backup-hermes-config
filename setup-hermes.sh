@@ -7,8 +7,8 @@
 #   bash setup-hermes.sh <BACKUP_DEVICE_IP>        # pass IP directly
 #
 # What it does:
-#   1. Restore data from backup device (if available)
-#   2. Save backup-target.conf config
+#   1. Configure backup destination (which server to save backups to)
+#   2. Optionally restore from an existing backup
 #   3. Schedule automatic daily backup via cron
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -18,11 +18,16 @@ echo "     SETUP HERMES — Restore + Auto Backup"
 echo "================================================"
 echo ""
 
-# ===== Get backup device IP =====
+# ===== Get backup storage device IP =====
+# This is the IP of the server/CT that stores all the backups.
+# Example: If your backup device is at 192.168.1.100, enter that.
 if [ -n "$1" ]; then
     BACKUP_DEVICE_IP="$1"
 else
-    read -r -p "Backup device IP: " BACKUP_DEVICE_IP
+    echo "Enter the IP of the device where backups are stored."
+    echo "This is the server/CT that receives and holds backup files."
+    echo ""
+    read -r -p "Backup storage device IP: " BACKUP_DEVICE_IP
 fi
 
 if [ -z "$BACKUP_DEVICE_IP" ]; then
@@ -30,9 +35,9 @@ if [ -z "$BACKUP_DEVICE_IP" ]; then
     exit 1
 fi
 
-# Test connection first
+# Test connection
 echo ""
-echo "Testing connection to backup device..."
+echo "Testing connection to $BACKUP_DEVICE_IP..."
 if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "root@$BACKUP_DEVICE_IP" "echo OK" 2>/dev/null; then
     echo "ERROR: Cannot connect to root@$BACKUP_DEVICE_IP"
     echo ""
@@ -42,7 +47,7 @@ if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "root@$BACKUP_DEVICE_IP" "echo OK"
     echo "  - The backup device is running"
     exit 1
 fi
-echo "OK - Connection successful!"
+echo "OK - Connected to backup storage device."
 echo ""
 
 # ===== Step 1: Save config =====
@@ -53,7 +58,7 @@ echo ""
 
 mkdir -p ~/.hermes/scripts
 
-read -r -p "Backup folder name (press Enter to use hostname): " FOLDER_NAME
+read -r -p "Name for this server in backups (press Enter to use hostname): " FOLDER_NAME
 if [ -z "$FOLDER_NAME" ]; then
     FOLDER_NAME="$(hostname -s)"
 fi
@@ -78,25 +83,18 @@ echo ""
 
 # ===== Step 2: Check for existing backups =====
 echo "------------------------------------------"
-echo "  STEP 2: Restore Data"
+echo "  STEP 2: Restore Data (optional)"
 echo "------------------------------------------"
 echo ""
 
 BACKUP_LIST=$(ssh -n "root@$BACKUP_DEVICE_IP" 'if [ -d /root/backups ]; then for d in /root/backups/*/; do [ -d "$d" ] && echo "$(basename "$d")|$(du -sh "$d" | cut -f1)"; done; fi' 2>/dev/null)
 
 if [ -z "$BACKUP_LIST" ]; then
-    echo "No backups found on $BACKUP_DEVICE_IP — skipping restore."
-    echo "The first backup will run automatically tonight."
+    echo "No existing backups found on $BACKUP_DEVICE_IP."
+    echo "Skipping restore. First backup will run later."
     echo ""
-    read -r -p "Proceed to cron setup? (y/n): " SKIP_RESTORE
-    if [[ "$SKIP_RESTORE" =~ ^[Yy]$ ]]; then
-        :
-    else
-        echo "Exiting."
-        exit 0
-    fi
 else
-    echo "Available backups:"
+    echo "The following backups exist on the storage device:"
     echo ""
 
     IFS=$'\n'
@@ -108,9 +106,13 @@ else
     done
 
     echo ""
-    read -r -p "Restore a backup? (y/n): " DO_RESTORE
+    echo "  n) None — skip restore, just set up backups"
+    echo ""
 
-    if [[ "$DO_RESTORE" =~ ^[Yy]$ ]]; then
+    read -r -p "Enter number to restore, or n to skip: " RESTORE_CHOICE
+
+    if [[ "$RESTORE_CHOICE" =~ ^[0-9]+$ ]] && [ "$RESTORE_CHOICE" -lt "${#ITEMS[@]}" ]; then
+        echo ""
         echo "Downloading restore script..."
         curl -s -o /tmp/hermes-restore.sh \
             https://raw.githubusercontent.com/MrElixir1945/how-to-backup-hermes-config/main/hermes-restore.sh
@@ -174,8 +176,8 @@ echo "================================================"
 echo "  SETUP COMPLETE!"
 echo "================================================"
 echo ""
-echo "  Backup device:  $BACKUP_DEVICE_IP"
-echo "  Backup folder:  $FOLDER_NAME"
+echo "  Backup storage device:  $BACKUP_DEVICE_IP"
+echo "  This server's backup folder:  $FOLDER_NAME"
 echo ""
 echo "  Config file:    ~/.hermes/scripts/backup-target.conf"
 echo "  Backup script:  ~/.hermes/scripts/hermes-backup.sh"
