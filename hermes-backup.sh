@@ -6,12 +6,12 @@
 #   bash hermes-backup.sh                                              # pake config file
 #   bash hermes-backup.sh <BACKUP_DEVICE_IP>                           # pake IP langsung
 #   bash hermes-backup.sh <BACKUP_DEVICE_IP> <FOLDER_NAME>             # IP + nama folder custom
-#   BACKUP_IP=10.10.10.116 BACKUP_FOLDER=mrelixir bash hermes-backup.sh  # pake env var
+#   BACKUP_IP=192.168.1.100 BACKUP_FOLDER=my-server bash hermes-backup.sh  # pake env var
 #
 # Config file: ~/.hermes/scripts/backup-target.conf
-#   BACKUP_IP=10.10.10.116
+#   BACKUP_IP=192.168.1.100
 #   BACKUP_USER=root
-#   BACKUP_FOLDER=mrelixir          # optional, default = hostname server
+#   BACKUP_FOLDER=my-server          # optional, default = hostname server
 #
 # Schedule: hermes cron create --name hermes-backup --script hermes-backup.sh --no-agent
 
@@ -35,8 +35,8 @@ else
     echo "❌ Gak tau mau backup ke mana!"
     echo "   Cara 1: bash hermes-backup.sh <IP_BACKUP_DEVICE> [NAMA_FOLDER]"
     echo "   Cara 2: buat file $CONFIG_FILE isi:"
-    echo "     BACKUP_IP=10.10.10.116"
-    echo "     BACKUP_FOLDER=mrelixir"
+    echo "     BACKUP_IP=192.168.1.100"
+    echo "     BACKUP_FOLDER=my-server"
     exit 1
 fi
 
