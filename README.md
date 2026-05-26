@@ -2,6 +2,8 @@
 
 Backup and restore your Hermes Agent config, skills, sessions, and memory to a local device (CT/VM/server) via SSH. No cloud involved.
 
+> WARNING: You need your own backup device (a Linux server, container, or VM) on the same local network as your Hermes server. These scripts use direct SSH connections over your LAN. They will not work over the internet, to external servers, or without a dedicated device to store the backups.
+
 ---
 
 ## Quick Start
