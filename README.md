@@ -24,9 +24,16 @@ gh repo create hermes-backup --private --description "Hermes Agent config backup
 
 ### 2. Clone to Your Server
 
+**Via SSH:**
 ```bash
 cd /root
 git clone git@github.com:YOUR_USERNAME/hermes-backup.git
+```
+
+**Via HTTPS (if using PAT):**
+```bash
+cd /root
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/YOUR_USERNAME/hermes-backup.git
 ```
 
 ### 3. Create the Backup Script
@@ -121,7 +128,67 @@ tar -xzf /root/hermes-backup-YYYY-MM-DD.tar.gz -C ~/
 
 - [Hermes Agent](https://hermes-agent.nousresearch.com) installed
 - GitHub CLI (`gh`) authenticated
-- SSH key or HTTPS token with push access
+- SSH key **or** GitHub classic PAT (see below)
+
+## GitHub Authentication Setup
+
+Your server needs to authenticate with GitHub to push backups. Choose **one** method:
+
+### Option A: SSH Key (Recommended)
+
+```bash
+# Generate SSH key
+ssh-keygen -t ed25519 -C "your-email@example.com"
+
+# Add to SSH agent
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+# Show public key — copy this to GitHub
+cat ~/.ssh/id_ed25519.pub
+```
+
+Then add the key at **GitHub → Settings → SSH and GPG keys → New SSH key**.
+
+### Option B: Classic PAT (Token)
+
+If you can't or don't want to use SSH, create a classic Personal Access Token:
+
+1. Go to **GitHub.com → Settings → Developer settings → Personal access tokens → Tokens (classic)**
+2. Click **Generate new token (classic)**
+3. Give it a name (e.g., `hermes-backup`)
+4. Set expiration (recommended: 90 days or No expiration for long-term)
+5. Select scope: **`repo`** (Full control of private repositories)
+6. Click **Generate token**
+7. **Copy the token now** — you won't see it again!
+
+Then store the token on your server:
+
+```bash
+# Save token for git HTTPS access
+git config --global credential.helper store
+echo "https://YOUR_USERNAME:YOUR_TOKEN@github.com" > ~/.git-credentials
+chmod 600 ~/.git-credentials
+```
+
+Or use it directly when cloning:
+
+```bash
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/YOUR_USERNAME/hermes-backup.git
+```
+
+> ⚠️ **Keep your token secret.** Anyone with this token can read/write your private repos.
+
+### Verify Auth Works
+
+```bash
+# SSH method
+ssh -T git@github.com
+# Expected output: "Hi YOUR_USERNAME! You've successfully authenticated..."
+
+# PAT method
+curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user
+```
 
 ## License
 
