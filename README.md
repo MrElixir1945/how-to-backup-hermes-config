@@ -1,100 +1,130 @@
-# How to Auto-Backup Hermes Agent Config to GitHub
+# How to Auto-Backup Hermes Agent to a Local Backup Device
 
-Step-by-step guide to automatically backup your **Hermes Agent** configuration, skills, and sessions to a **private GitHub repository** every day.
+Step-by-step guide to backup your **Hermes Agent** configuration, skills, sessions, memory, and source code to a **dedicated backup device** (CT/VM/server) on your local network every day. No GitHub, no cloud, no third party.
 
 ## What This Backs Up
 
-| File | Description | Pushed to GitHub? | Local Archive? |
+| Item | Description | To Backup Device? | Local Archive? |
 |------|-------------|-------------------|----------------|
 | `config.yaml` | Provider settings, tools, integrations | ✅ Yes | ✅ Yes |
 | `skills/` | Your custom skills and workflows | ✅ Yes | ✅ Yes |
-| `memories/` | MEMORY.md & USER.md — agent's knowledge about you | ✅ Yes | ✅ Yes |
-| `.env` | API keys & secrets | ❌ **Never** | ✅ Yes |
-| `auth.json` | Authentication tokens | ❌ **Never** | ✅ Yes |
-| `state.db` | Session transcripts & chat history | ❌ **Never** | ✅ Yes |
+| `.env` | API keys & secrets | ✅ Yes (SSH/rsync) | ✅ Yes |
+| `auth.json` | Authentication tokens | ✅ Yes (SSH/rsync) | ✅ Yes |
+| `state.db` | Session transcripts & chat history | ✅ Yes | ✅ Yes |
+| `mnemosyne/` | Agent's long-term memory | ✅ Yes | ❌ External only |
+| `cron/` | Scheduled jobs & scripts | ✅ Yes | ❌ External only |
+| Hermes source | Hermes Agent code itself | ✅ Yes | ❌ External only |
 
-> 🔒 **Security:** `.env`, `auth.json`, and `state.db` are saved in a local `.tar.gz` archive **only**. They are never pushed to GitHub, even to a private repo.
+> 🔒 **Security:** Everything stays on your local network. No data ever leaves your infrastructure.
+
+## Requirements
+
+- **Hermes Agent** installed on your main server
+- **Backup device** — any Linux server/CT/VM reachable via SSH (can be a Proxmox LXC)
+- SSH key-based auth between Hermes server and backup device
 
 ## Setup
 
-### 1. Create a Private Repo
+### 1. Create a Backup Device
+
+Spin up a lightweight Linux server/container (e.g., Ubuntu 24.04, 1GB RAM, 20GB disk). Give it a static IP on your local network. Set a root password.
+
+### 2. SSH Key Setup
+
+On your **Hermes server**, generate an SSH key if you don't have one:
 
 ```bash
-gh repo create hermes-backup --private --description "Hermes Agent config backup"
+ssh-keygen -t ed25519 -N ""
 ```
 
-### 2. Clone to Your Server
+Copy the public key to the backup device:
 
-**Via SSH:**
 ```bash
-cd /root
-git clone git@github.com:YOUR_USERNAME/hermes-backup.git
+ssh-copy-id root@<BACKUP_IP>
 ```
 
-**Via HTTPS (if using PAT):**
+Or manually:
+
 ```bash
-cd /root
-git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/YOUR_USERNAME/hermes-backup.git
+cat ~/.ssh/id_ed25519.pub | ssh root@<BACKUP_IP> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
 ```
 
-### 3. Create the Backup Script
+Test it:
 
-Create `~/.hermes/scripts/hermes-backup.sh`:
+```bash
+ssh root@<BACKUP_IP> "echo connected"
+```
+
+### 3. Create the Backup Directory
+
+On the backup device:
+
+```bash
+ssh root@<BACKUP_IP> "mkdir -p /root/hermes-backup"
+```
+
+### 4. Create the Backup Script
+
+Create `~/.hermes/scripts/hermes-backup.sh` — copy the template below and change `BACKUP_IP` to your backup device's IP:
 
 ```bash
 #!/bin/bash
+# Hermes Agent Auto-Backup to Local Backup Device
+# Change BACKUP_IP to match your backup device
+
 HERMES_HOME="$HOME/.hermes"
-GIT_REPO="/root/hermes-backup"
+BACKUP_IP="10.10.10.116"
+BACKUP_DIR="/root/hermes-backup"
+HERMES_SRC="/usr/local/lib/hermes-agent"
 DATE=$(date +%Y-%m-%d)
+FILENAME="hermes-backup-$DATE.tar.gz"
+MAX_LOCAL=7
 
-# Push safe files to GitHub (config.yaml, skills/ & memories/ only)
-mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills" "$GIT_REPO/memories"
-cp "$HERMES_HOME/config.yaml" "$GIT_REPO/config/" 2>/dev/null
-cp -r "$HERMES_HOME/skills/"* "$GIT_REPO/skills/" 2>/dev/null
-cp -r "$HERMES_HOME/memories/"* "$GIT_REPO/memories/" 2>/dev/null
+echo "[$(date '+%H:%M:%S')] === Hermes Backup $DATE ==="
 
-cd "$GIT_REPO" || exit 1
-if [ -n "$(git status --porcelain)" ]; then
-    git add .
-    git commit -m "backup $DATE"
-    git push origin HEAD:main
+# ===== BACKUP TO REMOTE DEVICE =====
+echo "[1] Backing up to $BACKUP_IP..."
+
+rsync -a "$HERMES_HOME/config.yaml" "root@$BACKUP_IP:$BACKUP_DIR/config/" 2>/dev/null
+rsync -a "$HERMES_HOME/.env" "root@$BACKUP_IP:$BACKUP_DIR/config/" 2>/dev/null
+rsync -a "$HERMES_HOME/auth.json" "root@$BACKUP_IP:$BACKUP_DIR/config/" 2>/dev/null
+rsync -a "$HERMES_HOME/state.db" "root@$BACKUP_IP:$BACKUP_DIR/sessions/" 2>/dev/null
+rsync -a --delete "$HERMES_HOME/skills/" "root@$BACKUP_IP:$BACKUP_DIR/skills/" 2>/dev/null
+rsync -a --delete "$HERMES_HOME/mnemosyne/" "root@$BACKUP_IP:$BACKUP_DIR/mnemosyne/" 2>/dev/null
+rsync -a "$HERMES_HOME/cron/" "root@$BACKUP_IP:$BACKUP_DIR/cron/" 2>/dev/null
+
+# Optional: backup Hermes source (exclude .git/venv)
+rsync -a --delete \
+  --exclude='.git' --exclude='node_modules' --exclude='venv' --exclude='.venv' \
+  --exclude='__pycache__' --exclude='*.pyc' \
+  "$HERMES_SRC/" "root@$BACKUP_IP:$BACKUP_DIR/hermes-src/" 2>/dev/null
+
+# ===== FULL LOCAL ARCHIVE (redundancy) =====
+echo "[2] Creating local archive..."
+FILES=()
+for f in config.yaml .env state.db auth.json; do
+    [ -f "$HERMES_HOME/$f" ] && FILES+=("$HERMES_HOME/$f")
+done
+[ -d "$HERMES_HOME/skills" ] && FILES+=("$HERMES_HOME/skills")
+
+if [ ${#FILES[@]} -gt 0 ]; then
+    tar -czf "/root/$FILENAME" "${FILES[@]}" 2>/dev/null
 fi
 
-# Full local backup (includes .env, auth.json, state.db, memories — stays on server only)
-tar -czf "/root/hermes-backup-$DATE.tar.gz" \
-  "$HERMES_HOME/config.yaml" "$HERMES_HOME/.env" \
-  "$HERMES_HOME/auth.json" "$HERMES_HOME/state.db" \
-  "$HERMES_HOME/skills" "$HERMES_HOME/memories" 2>/dev/null
+# Clean old archives
+ls -1t /root/hermes-backup-*.tar.gz 2>/dev/null | \
+    tail -n +$((MAX_LOCAL+1)) | xargs rm -f 2>/dev/null
+
+echo "[$(date '+%H:%M:%S')] === Backup Complete ==="
 ```
 
 Make it executable:
+
 ```bash
 chmod +x ~/.hermes/scripts/hermes-backup.sh
 ```
 
-### 3b. Create .gitignore
-
-Create `/root/hermes-backup/.gitignore` to keep secrets out of git:
-
-```bash
-cat > /root/hermes-backup/.gitignore << 'EOF'
-# Secrets - never pushed to GitHub
-.env
-*.tar.gz
-auth.json
-config/auth.json
-state.db
-sessions/state.db
-*.tmp
-*.log
-EOF
-
-cd /root/hermes-backup && git add .gitignore && git commit -m "add .gitignore"
-```
-
-### 4. Schedule with Cron
-
-Using Hermes Agent scheduler:
+### 5. Schedule with Cron
 
 ```bash
 hermes cron create \
@@ -106,111 +136,51 @@ hermes cron create \
 
 This runs the backup daily at **7 PM UTC**.
 
-### 5. Test It
+### 6. Test It
 
 ```bash
 bash ~/.hermes/scripts/hermes-backup.sh
-cd /root/hermes-backup && git log --oneline
 ```
 
-## What to Expect
+Check the backup device:
 
-After setup, every day at 7 PM UTC:
-1. Hermes config/skills/sessions are copied to the repo folder
-2. Changes are committed and pushed as `backup YYYY-MM-DD`
-3. A full archive (including `.env`) is saved locally at `/root/hermes-backup-YYYY-MM-DD.tar.gz`
-4. Local archives older than 7 days are deleted
+```bash
+ssh root@<BACKUP_IP> "du -sh /root/hermes-backup"
+```
 
 ## Restore
 
-### From GitHub (no .env)
+On a **fresh Hermes installation**, run from the Hermes server:
+
 ```bash
-cd /root
-git clone git@github.com:YOUR_USERNAME/hermes-backup.git
-cp hermes-backup/config/config.yaml ~/.hermes/
-cp hermes-backup/sessions/state.db ~/.hermes/
-cp -r hermes-backup/skills/* ~/.hermes/skills/
+# Restore everything from backup device
+rsync -a root@<BACKUP_IP>:/root/hermes-backup/config/config.yaml ~/.hermes/
+rsync -a root@<BACKUP_IP>:/root/hermes-backup/config/.env ~/.hermes/
+rsync -a root@<BACKUP_IP>:/root/hermes-backup/config/auth.json ~/.hermes/
+rsync -a root@<BACKUP_IP>:/root/hermes-backup/sessions/state.db ~/.hermes/
+rsync -a --delete root@<BACKUP_IP>:/root/hermes-backup/skills/ ~/.hermes/skills/
+rsync -a --delete root@<BACKUP_IP>:/root/hermes-backup/mnemosyne/ ~/.hermes/mnemosyne/
 ```
 
-### From Local Archive (with .env)
+Or from local archive:
+
 ```bash
 tar -xzf /root/hermes-backup-YYYY-MM-DD.tar.gz -C ~/
 ```
 
 ## Security Notes
 
-- **Keep the GitHub repo PRIVATE** — it contains your config and skills
-- `.env`, `auth.json`, and `state.db` are **never** committed to Git — they exist only in local `.tar.gz` archives on your server
-- State.db contains **all your chat transcripts** — treat it like a private message history
-- Auth.json contains **OAuth tokens** — rotate immediately if your repo is ever exposed
-- If you accidentally expose a repo, rotate ALL your API keys and tokens immediately
-- The local `.tar.gz` archive stays on your server only — clean old ones with `rm /root/hermes-backup-*.tar.gz`
+- Everything stays on **your local network** — zero cloud exposure
+- Backup device should be on the same LAN for speed
+- The local `.tar.gz` archive is on your server only — clean old ones with `rm /root/hermes-backup-*.tar.gz`
 
-## Requirements
+## What to Expect
 
-- [Hermes Agent](https://hermes-agent.nousresearch.com) installed
-- GitHub CLI (`gh`) authenticated
-- SSH key **or** GitHub classic PAT (see below)
-
-## GitHub Authentication Setup
-
-Your server needs to authenticate with GitHub to push backups. Choose **one** method:
-
-### Option A: SSH Key (Recommended)
-
-```bash
-# Generate SSH key
-ssh-keygen -t ed25519 -C "your-email@example.com"
-
-# Add to SSH agent
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
-
-# Show public key — copy this to GitHub
-cat ~/.ssh/id_ed25519.pub
-```
-
-Then add the key at **GitHub → Settings → SSH and GPG keys → New SSH key**.
-
-### Option B: Classic PAT (Token)
-
-If you can't or don't want to use SSH, create a classic Personal Access Token:
-
-1. Go to **GitHub.com → Settings → Developer settings → Personal access tokens → Tokens (classic)**
-2. Click **Generate new token (classic)**
-3. Give it a name (e.g., `hermes-backup`)
-4. Set expiration (recommended: 90 days or No expiration for long-term)
-5. Select scope: **`repo`** (Full control of private repositories)
-6. Click **Generate token**
-7. **Copy the token now** — you won't see it again!
-
-Then store the token on your server:
-
-```bash
-# Save token for git HTTPS access
-git config --global credential.helper store
-echo "https://YOUR_USERNAME:YOUR_TOKEN@github.com" > ~/.git-credentials
-chmod 600 ~/.git-credentials
-```
-
-Or use it directly when cloning:
-
-```bash
-git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/YOUR_USERNAME/hermes-backup.git
-```
-
-> ⚠️ **Keep your token secret.** Anyone with this token can read/write your private repos.
-
-### Verify Auth Works
-
-```bash
-# SSH method
-ssh -T git@github.com
-# Expected output: "Hi YOUR_USERNAME! You've successfully authenticated..."
-
-# PAT method
-curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user
-```
+Every day at 7 PM UTC:
+1. All Hermes config, skills, sessions, memory backed up to the remote device via rsync
+2. Full archive (including `.env`) saved locally at `/root/hermes-backup-YYYY-MM-DD.tar.gz`
+3. Local archives older than 7 days auto-cleaned
+4. Backup device holds the full Hermes source for total recovery
 
 ## License
 

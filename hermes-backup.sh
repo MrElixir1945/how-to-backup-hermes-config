@@ -1,45 +1,59 @@
 #!/bin/bash
-# Hermes Agent Auto-Backup
-# Push safe files (config.yaml + skills/ + memories/) to GitHub.
-# Full backup (with .env, auth, sessions) saved locally as .tar.gz
+# Hermes Agent Auto-Backup to Local Backup Device
+# =================================================
+# Change BACKUP_IP to match your backup device's IP address.
+# Setup: Place in ~/.hermes/scripts/hermes-backup.sh
+# Schedule: hermes cron create --name hermes-backup --schedule "0 19 * * *" --script ~/.hermes/scripts/hermes-backup.sh --no-agent
 #
-# CONFIGURATION:
+# CONFIGURATION — Change these:
+BACKUP_IP="10.10.10.116"          # Your backup device IP
+BACKUP_DIR="/root/hermes-backup"  # Destination folder on backup device
+
+# — Don't change below this line unless you know what you're doing —
 HERMES_HOME="$HOME/.hermes"
-GIT_REPO="/root/hermes-backup"
+HERMES_SRC="/usr/local/lib/hermes-agent"
 DATE=$(date +%Y-%m-%d)
+FILENAME="hermes-backup-$DATE.tar.gz"
 MAX_LOCAL=7
 
-# ===== SAFE FILES → GITHUB =====
-# Only config.yaml, skills/, memories/ are pushed.
-# auth.json, state.db, .env are NEVER pushed — they stay in local archive.
-mkdir -p "$GIT_REPO/config" "$GIT_REPO/skills" "$GIT_REPO/memories"
+echo "[$(date '+%H:%M:%S')] === Hermes Backup $DATE ==="
 
-cp "$HERMES_HOME/config.yaml" "$GIT_REPO/config/" 2>/dev/null
-cp -r "$HERMES_HOME/skills/"* "$GIT_REPO/skills/" 2>/dev/null
-cp -r "$HERMES_HOME/memories/"* "$GIT_REPO/memories/" 2>/dev/null
+# ===== BACKUP TO REMOTE DEVICE =====
+echo "[1/3] Backing up to $BACKUP_IP..."
 
-cd "$GIT_REPO" || exit 1
-if [ -n "$(git status --porcelain)" ]; then
-    git add .
-    git commit -m "backup $DATE"
-    git push origin HEAD:main 2>&1 && echo "GITHUB: pushed OK" || echo "GITHUB: push failed"
-fi
+ssh root@$BACKUP_IP "mkdir -p $BACKUP_DIR/config $BACKUP_DIR/sessions $BACKUP_DIR/skills $BACKUP_DIR/mnemosyne $BACKUP_DIR/cron $BACKUP_DIR/hermes-src" 2>/dev/null
 
-# ===== FULL LOCAL BACKUP (with secrets) =====
-# Stays on your server only — includes .env, auth.json, state.db
+rsync -a "$HERMES_HOME/config.yaml" "root@$BACKUP_IP:$BACKUP_DIR/config/" 2>/dev/null && echo "  [OK] config.yaml"
+rsync -a "$HERMES_HOME/.env" "root@$BACKUP_IP:$BACKUP_DIR/config/" 2>/dev/null && echo "  [OK] .env"
+rsync -a "$HERMES_HOME/auth.json" "root@$BACKUP_IP:$BACKUP_DIR/config/" 2>/dev/null && echo "  [OK] auth.json"
+rsync -a "$HERMES_HOME/state.db" "root@$BACKUP_IP:$BACKUP_DIR/sessions/" 2>/dev/null && echo "  [OK] state.db"
+rsync -a --delete "$HERMES_HOME/skills/" "root@$BACKUP_IP:$BACKUP_DIR/skills/" 2>/dev/null && echo "  [OK] skills/"
+rsync -a --delete "$HERMES_HOME/mnemosyne/" "root@$BACKUP_IP:$BACKUP_DIR/mnemosyne/" 2>/dev/null && echo "  [OK] mnemosyne/"
+rsync -a "$HERMES_HOME/cron/" "root@$BACKUP_IP:$BACKUP_DIR/cron/" 2>/dev/null && echo "  [OK] cron/"
+
+# Optional: backup Hermes source (exclude heavy/dev dirs)
+rsync -a --delete \
+  --exclude='.git' --exclude='node_modules' --exclude='venv' --exclude='.venv' \
+  --exclude='__pycache__' --exclude='*.pyc' \
+  "$HERMES_SRC/" "root@$BACKUP_IP:$BACKUP_DIR/hermes-src/" 2>/dev/null && echo "  [OK] hermes source"
+
+# ===== FULL LOCAL ARCHIVE =====
+echo "[2/3] Creating local archive..."
 FILES=()
 for f in config.yaml .env state.db auth.json; do
     [ -f "$HERMES_HOME/$f" ] && FILES+=("$HERMES_HOME/$f")
 done
-for d in skills memories; do
-    [ -d "$HERMES_HOME/$d" ] && FILES+=("$HERMES_HOME/$d")
-done
+[ -d "$HERMES_HOME/skills" ] && FILES+=("$HERMES_HOME/skills")
 
 if [ ${#FILES[@]} -gt 0 ]; then
-    tar -czf "/root/hermes-backup-$DATE.tar.gz" "${FILES[@]}" 2>/dev/null && \
-    echo "LOCAL: /root/hermes-backup-$DATE.tar.gz"
+    tar -czf "/root/$FILENAME" "${FILES[@]}" 2>/dev/null && \
+    echo "  [OK] /root/$FILENAME ($(du -h /root/$FILENAME | cut -f1))"
 fi
 
-# Clean old local archives
+# Clean old archives
+echo "[3/3] Cleaning old archives..."
 ls -1t /root/hermes-backup-*.tar.gz 2>/dev/null | \
     tail -n +$((MAX_LOCAL+1)) | xargs rm -f 2>/dev/null
+echo "  [OK] Keeping last $MAX_LOCAL archives"
+
+echo "[$(date '+%H:%M:%S')] === Backup Complete ==="
