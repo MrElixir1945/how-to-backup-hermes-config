@@ -61,7 +61,7 @@ BACKUP_DIR="${DIRS[$CHOICE]}"
 BACKUP_NAME="${NAMES[$CHOICE]}"
 
 echo ""
-read -r -p "Target Hermes server IP (e.g. 10.10.10.117): " TARGET_IP
+read -r -p "Target Hermes server IP (e.g. 192.168.1.100): " TARGET_IP
 
 if [ -z "$TARGET_IP" ]; then
     echo "❌ IP is required!"
